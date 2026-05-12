@@ -51,7 +51,7 @@ app.post('/reset-drip', async (req, res) => {
             try {
                 // INICIAMOS SESIÓN EN EL SERVIDOR PARA SALTARNOS LAS REGLAS DE SEGURIDAD
                 // Pon un correo y contraseña de un usuario administrador de ezteam-3e6f3
-                await signInWithEmailAndPassword(auth, "feitanacount@gmail.com", "serello099);
+                await signInWithEmailAndPassword(auth, "feitanacount@gmail.com", "serello099");
 
                 const ordenesRef = collection(db, 'ordenes');
                 const q = query(
