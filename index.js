@@ -1,20 +1,22 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
-const admin = require('firebase-admin');
+const { initializeApp } = require('firebase/app');
+const { getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp } = require('firebase/firestore');
 
-// Inicializar Firebase Admin para poder inyectar datos en Realtime Database
-try {
-    if (!admin.apps.length) {
-        // Requiere tu archivo serviceAccountKey.json de Firebase en el servidor
-        admin.initializeApp({
-            credential: admin.credential.cert(require('./serviceAccountKey.json')),
-            databaseURL: "https://clientesvip-be9bd-default-rtdb.firebaseio.com" // La URL de tu base de datos actual
-        });
-    }
-} catch (error) {
-    console.log("Aviso: Firebase Admin no inicializado. Asegúrate de tener serviceAccountKey.json en la raíz del proyecto.");
-}
+// Tu configuración exacta de Firebase (ezteam-3e6f3)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC5Og3mYzKROltzRfX5BhW0YexVYqYtHsI",
+  authDomain: "ezteam-3e6f3.firebaseapp.com",
+  projectId: "ezteam-3e6f3",
+  storageBucket: "ezteam-3e6f3.firebasestorage.app",
+  messagingSenderId: "30544278085",
+  appId: "1:30544278085:web:e1cb049342d8acafe9292c"
+};
+
+// Inicializamos Firebase con tu configuración
+const firebaseApp = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(firebaseApp);
 
 const app = express();
 
@@ -24,7 +26,6 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 app.post('/reset-drip', async (req, res) => {
-    // Recibimos uid_cliente desde tu web para saber a qué usuario inyectarle la key
     const { license_key, uid_cliente } = req.body;
     const userId = "TLI0oWrruTZlOYYMG5On6WkAL2P2"; // Tu ID seguro en el server
 
@@ -33,7 +34,7 @@ app.post('/reset-drip', async (req, res) => {
     }
 
     try {
-        // Aquí hacemos la petición simulando ser un navegador
+        // Aquí hacemos la petición simulando ser un navegador a Ezteam
         const response = await axios({
             method: 'post',
             url: 'https://ezteamsociety.com/api/drip_reset.php',
@@ -47,31 +48,40 @@ app.post('/reset-drip', async (req, res) => {
         });
 
         // ---------------------------------------------------------
-        // LÓGICA DE INYECCIÓN DE KEY AL USUARIO (Realtime Database)
+        // LÓGICA DE INYECCIÓN EN FIRESTORE CON TU CONFIGURACIÓN
         // ---------------------------------------------------------
-        if (uid_cliente && admin.apps.length > 0) {
+        if (uid_cliente) {
             try {
-                const db = admin.database();
-                // Limpiamos la key para usarla como nombre del nodo (Firebase no permite caracteres como . # $ [ ] en las rutas)
-                const safeKey = license_key.replace(/[.#$\[\]]/g, '_');
+                const ordenesRef = collection(db, 'ordenes');
                 
-                // Buscamos la ruta del usuario para guardarle sus keys
-                const keyRef = db.ref(`users/${uid_cliente}/keys_drip/${safeKey}`);
-                
-                const snapshot = await keyRef.once('value');
-                if (!snapshot.exists()) {
-                    // Si el usuario no tiene la key guardada, el servidor se la inyecta
-                    await keyRef.set({
-                        key_original: license_key,
-                        fecha_inyeccion: new Date().toISOString()
+                // Buscamos si el usuario ya tiene esta key en su historial
+                const q = query(
+                    ordenesRef, 
+                    where('userId', '==', uid_cliente), 
+                    where('clave', '==', license_key)
+                );
+                const querySnapshot = await getDocs(q);
+
+                // Si no la tiene, se la inyectamos como una orden completada
+                if (querySnapshot.empty) {
+                    await addDoc(ordenesRef, {
+                        userId: uid_cliente,
+                        nombre: "Drip Client (Inyectada)",
+                        clave: license_key,
+                        precio: 0,
+                        estado: "completado",
+                        numeroOrden: "INJ-" + Math.floor(Math.random() * 1000000), // Genera ID falso
+                        duracion: "Lifetime",
+                        fecha: serverTimestamp()
                     });
-                    console.log(`[LUCK XIT] Key inyectada a la cuenta del usuario: ${uid_cliente}`);
+                    console.log(`[LUCK XIT] Key inyectada exitosamente en Firestore para el usuario: ${uid_cliente}`);
                 } else {
-                    console.log(`[LUCK XIT] El usuario ${uid_cliente} ya tenía esta key en su cuenta.`);
+                    console.log(`[LUCK XIT] El usuario ${uid_cliente} ya tiene esta key en su historial de Firestore.`);
                 }
             } catch (dbError) {
-                console.error("Error inyectando en DB:", dbError.message);
-                // Si la inyección falla, no se rompe la web, sigue con el proceso normal
+                // Aviso: Si las reglas de seguridad (Security Rules) de tu Firestore bloquean 
+                // la escritura desde clientes sin autenticar, esto tirará error de permisos.
+                console.error("Error inyectando en Firestore:", dbError.message);
             }
         }
 
